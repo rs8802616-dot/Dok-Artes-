@@ -1,0 +1,6 @@
+{
+  "name": "FreeNote Studio - Desenho & Caderno Digital",
+  "description": "Estúdio profissional de pintura e ilustração digital inspirado no Procreate com biblioteca de pincéis, camadas, ColorDrop, disco de cores, QuickShape e animação.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
