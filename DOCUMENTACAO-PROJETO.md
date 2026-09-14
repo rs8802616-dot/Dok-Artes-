@@ -64,6 +64,11 @@ O **FreeNote Studio** é uma aplicação web progressiva de pintura digital, ilu
 │   │   ├── ProcreateAnimationAssist.tsx # Painel inferior de Assistente de Animação
 │   │   ├── ProcreateReferenceWindow.tsx # Janela flutuante Picture-in-Picture de referência
 │   │   ├── ProcreateGallery.tsx         # Modal de Galeria de obras e novos formatos
+│   │   ├── ProcreateBrushStudio.tsx     # Estúdio avançado de pincéis (150+ parâmetros e scratchpad)
+│   │   ├── ProcreateAdjustmentModal.tsx # Ajustes avançados (Curvas RGB, Equilíbrio de Cores, Mapa de Gradiente, etc.)
+│   │   ├── Procreate3DViewer.tsx        # Estúdio 3D com Three.js para pintura em malhas e iluminação
+│   │   ├── ProcreateTimelapseModal.tsx  # Reprodutor interativo de replay Time-lapse com scrubbing
+│   │   ├── ProcreateMiniPalette.tsx     # Paleta compacta flutuante desacoplável com amostras rápidas
 │   │   ├── FreeNoteRuler.tsx            # Ferramenta de régua interativa FreeNote
 │   │   └── Toolbar.tsx                  # Barra de suporte auxiliar
 │   └── utils/                   # Motores lógicos e utilitários
@@ -127,9 +132,36 @@ Oferece 5 modos de trabalho:
 - Miniaturas dinâmicas atualizadas após cada traço.
 - Modos de mesclagem completos (`source-over`, `multiply`, `screen`, `overlay`, etc.).
 - Bloqueio de edição e **Alpha Lock** (permite pintar exclusivamente sobre os pixels já existentes na camada).
+- **Máscara de Recorte (Clipping Mask)**: Permite restringir o conteúdo visual de uma camada aos limites da camada inferior.
+- **Inversão e Cópia de Camada**: Ações rápidas acessíveis diretamente pelas opções contextuais da camada.
 - Seleção da cor de fundo da tela.
 
-### 4.7. Motor de Armazenamento (`src/utils/storage.ts`)
+### 4.7. Estúdio Avançado de Pincéis (`src/components/ProcreateBrushStudio.tsx`)
+- Configuração paramétrica completa de pincéis inspirada no Brush Studio do Procreate:
+  - Propriedades de traçado (*Stroke path*): espaçamento (*spacing*), estabilização (*streamline*), jitter e falloff.
+  - Forma (*Shape*) e Grão (*Grain*): rotação, dispersão (*scatter*), escala e profundidade do grão.
+  - Dinâmica e Pressão: modulação de tamanho, opacidade e fluxo conforme a velocidade e pressão da caneta/stylus.
+  - Bloco de desenho interativo (*Drawing Pad/Scratchpad*) para testar e limpar os traços em tempo real com botão de reset para configurações originais.
+
+### 4.8. Ajustes Profissionais e Filtros (`src/components/ProcreateAdjustmentModal.tsx` & `src/utils/filterEngine.ts`)
+- **Curvas Tonais RGB**: Controle de curvatura de luminância com manipulação de ponto médio e mapeamento de LUT de 256 níveis.
+- **Equilíbrio de Cores**: Ajuste tricolor simultâneo (Ciano/Vermelho, Magenta/Verde, Amarelo/Azul).
+- **Mapa de Gradiente**: Presets cromáticos selecionáveis (Sunset, Neon, Vintage, Noir e Cyber) mapeando faixas de luminância para paletas ricas.
+- **Efeitos de Imagem**: Ruído gaussiano procedural (*Noise*), Nitidez convolutiva (*Sharpen*), Desfoque de movimento, Bloom e Desfoque Gaussiano com slider interativo em tempo real.
+
+### 4.9. Estúdio 3D e Pintura de Malhas (`src/components/Procreate3DViewer.tsx`)
+- Renderizador WebGL baseado em Three.js integrado diretamente ao ecossistema do app.
+- Aplicação instantânea da arte 2D desenhada no canvas como textura UV projetada sobre modelos tridimensionais (Busto, Esfera, Caneca, Cubo, Skate).
+- Quatro presets de iluminação realista (Estúdio, Luz Solar, Neon e Noturna), rotação automática e captura de render em alta resolução.
+
+### 4.10. Repetidor Time-lapse Interativo (`src/components/ProcreateTimelapseModal.tsx`)
+- Captura de snapshots a cada traço consolidado no desenho.
+- Player interativo com reprodução/pausa, scrubbing temporal na timeline, indicador de quadros e opção de exportação do vídeo do processo artístico.
+
+### 4.11. Paleta de Cores Mini Flutuante (`src/components/ProcreateMiniPalette.tsx`)
+- Mini paleta flutuante desacoplável do Color Picker que pode ser mantida sobre o viewport para acesso imediato a cores recentes e amostras favoritas durante a ilustração.
+
+### 4.12. Motor de Armazenamento (`src/utils/storage.ts`)
 - Utiliza **IndexedDB** como armazenamento prioritário com fallback para **LocalStorage**.
 - Serialização de camadas em DataURL PNG de alta fidelidade.
 - Presets padrão: Quadrado (2048x2048), 4K UHD, Papel A4, Papel Carta e Story (9:16).
@@ -148,6 +180,15 @@ Quando o usuário solicitar novas funcionalidades, siga as regras abaixo:
 ---
 
 ## 6. Histórico de Alterações (Changelog)
+
+### [2026-09-14] - Suíte Procreate Pro: Brush Studio, Ajustes Avançados, Estúdio 3D e Time-lapse
+- **Brush Studio Completo**: Implementado modal profissional com abas para ajuste de Stroke, Shape, Grain, Dynamics, Dual Brush, Properties e About, com scratchpad de teste integrado e persistência de streamline e ajustes.
+- **Ajustes Profissionais**: Implementado modal de ajustes com manipulação em tempo real para Curvas RGB paramétricas, Equilíbrio de Cores, Mapa de Gradiente com presets (Sunset, Neon, Vintage, Noir, Cyber), Ruído, Nitidez e Desfoque.
+- **Estúdio 3D com Three.js**: Implementado visualizador tridimensional com projeção da textura pintada 2D na malha de objetos 3D, controle de iluminação de estúdio e exportação de captura.
+- **Replay Time-lapse Interativo**: Captura de snapshots do histórico de desenho e modal interativo com player, scrubbing e controle de velocidade.
+- **Paleta Flutuante Desacoplável**: Suporte a desacoplar a paleta de cores como uma barra compacta flutuante com amostras de cor e atalho de conta-gotas.
+- **Recursos de Camadas Estendidos**: Suporte a Máscara de Recorte (*Clipping Mask*), Inversão de Camada e duplicação direta de camadas no menu contextual.
+- **Correção de Tipagens e Compilação**: Adequação total de tipos no `src/types.ts` e orquestração limpa e reativa no `src/App.tsx`.
 
 ### [2026-09-13] - Criação da Documentação Mestre e Arquitetura Procreate Completa
 - **Documentação do Projeto**: Criação deste arquivo `DOCUMENTACAO-PROJETO.md` para guiar todas as interações e desenvolvimentos futuros da IA.

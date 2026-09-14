@@ -22,14 +22,7 @@ import {
   createNewDefaultProject
 } from './utils/storage';
 import { floodFill } from './utils/drawingEngine';
-import {
-  applyImageAdjustments,
-  applyCurves,
-  applyColorBalance,
-  applyGradientMap,
-  applyNoise,
-  applySharpen,
-} from './utils/filterEngine';
+import { applyImageAdjustments } from './utils/filterEngine';
 
 import { CanvasViewport } from './components/CanvasViewport';
 import { ProcreateHeader } from './components/ProcreateHeader';
@@ -505,57 +498,6 @@ export default function App() {
     if (!active || active.locked) return;
     pushUndoSnapshot();
     applyImageAdjustments(active.ctx, adjustments);
-    setLayers([...layers]);
-    persistCurrentProject();
-  };
-
-  // Advanced Procreate Filter Application
-  const handleApplyAdjustmentModal = (type: string, value: number, options?: any) => {
-    const active = layers.find((l) => l.id === activeLayerId);
-    if (!active || active.locked) return;
-    pushUndoSnapshot();
-
-    const ctx = active.ctx;
-    const w = active.canvas.width;
-    const h = active.canvas.height;
-    const imgData = ctx.getImageData(0, 0, w, h);
-
-    if (type === 'curves') {
-      applyCurves(imgData, options?.channel || 'rgb', options?.curvePoints || []);
-      ctx.putImageData(imgData, 0, 0);
-    } else if (type === 'color_balance') {
-      applyColorBalance(
-        imgData,
-        options?.cyanRed || 0,
-        options?.magentaGreen || 0,
-        options?.yellowBlue || 0
-      );
-      ctx.putImageData(imgData, 0, 0);
-    } else if (type === 'gradient_map') {
-      applyGradientMap(imgData, options?.stops || []);
-      ctx.putImageData(imgData, 0, 0);
-    } else if (type === 'noise') {
-      applyNoise(imgData, value * 100);
-      ctx.putImageData(imgData, 0, 0);
-    } else if (type === 'sharpen') {
-      applySharpen(imgData, value * 5);
-      ctx.putImageData(imgData, 0, 0);
-    } else if (type === 'hsl') {
-      applyImageAdjustments(ctx, {
-        hue: (options?.hue || 0) * 180,
-        saturation: (options?.saturation || 0) * 100,
-        brightness: (options?.brightness || 0) * 100,
-      });
-    } else if (type === 'gaussian') {
-      applyImageAdjustments(ctx, { blur: value * 30 });
-    } else if (type === 'bloom') {
-      applyImageAdjustments(ctx, { bloom: value });
-    } else if (type === 'glitch') {
-      applyImageAdjustments(ctx, { glitch: value });
-    } else if (type === 'halftone') {
-      applyImageAdjustments(ctx, { halftone: value });
-    }
-
     setLayers([...layers]);
     persistCurrentProject();
   };
@@ -1065,28 +1007,29 @@ export default function App() {
       <ProcreateBrushStudio
         isOpen={showBrushStudio}
         onClose={() => setShowBrushStudio(false)}
-        initialPreset={
+        brush={
           editingBrush ||
           BRUSH_PRESETS.find((b) => b.id === activeBrushId) ||
           BRUSH_PRESETS[0]
         }
-        onSavePreset={(preset) => {
-          if (preset.id === activeBrushId) {
-            setBrushSize(preset.defaultSize);
-            setBrushOpacity(preset.defaultOpacity);
-            setSmoothing(preset.smoothing);
-          }
+        onSaveBrushSettings={(_brushId, settings) => {
+          setSmoothing(settings.streamline);
           setShowBrushStudio(false);
         }}
+        currentColor={primaryColor}
       />
 
       {/* 16. Procreate Advanced Adjustment Modal (Curves, Color Balance, Gradient Map, etc.) */}
       <ProcreateAdjustmentModal
         isOpen={showAdjustmentModal}
         onClose={() => setShowAdjustmentModal(false)}
-        adjustmentType={selectedAdjustmentType}
-        onApply={handleApplyAdjustmentModal}
-        previewCanvas={layers.find((l) => l.id === activeLayerId)?.canvas}
+        activeAdjustment={selectedAdjustmentType}
+        activeLayerCanvas={layers.find((l) => l.id === activeLayerId)?.canvas || null}
+        onApplyChanges={() => {
+          pushUndoSnapshot();
+          setLayers([...layers]);
+          persistCurrentProject();
+        }}
       />
 
       {/* 17. Procreate 3D Model Painting Studio */}
@@ -1094,8 +1037,7 @@ export default function App() {
         isOpen={show3DViewer}
         onClose={() => setShow3DViewer(false)}
         currentColor={primaryColor}
-        currentBrushSize={brushSize}
-        activeCanvasTexture={layers.find((l) => l.visible)?.canvas.toDataURL()}
+        canvasTextureSource={layers.find((l) => l.visible)?.canvas || null}
       />
 
       {/* 18. Procreate Interactive Time-lapse Player */}
