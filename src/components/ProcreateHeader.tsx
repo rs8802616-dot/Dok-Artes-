@@ -9,7 +9,8 @@ import {
   Eraser,
   Layers,
   X,
-  Check
+  Check,
+  Download
 } from 'lucide-react';
 import { ToolType, BrushPresetId } from '../types';
 
@@ -17,6 +18,7 @@ interface ProcreateHeaderProps {
   projectName: string;
   onRenameProject: (name: string) => void;
   onOpenGallery: () => void;
+  onOpenInstallModal?: () => void;
   // Left buttons
   onToggleActions: () => void;
   showActions: boolean;
@@ -55,6 +57,7 @@ export function ProcreateHeader({
   projectName,
   onRenameProject,
   onOpenGallery,
+  onOpenInstallModal,
   onToggleActions,
   showActions,
   onToggleAdjustments,
@@ -302,8 +305,20 @@ export function ProcreateHeader({
           )}
         </div>
 
-        {/* RIGHT CLUSTER: Pincel, Esfumar (Dedo), Borracha, Camadas, Cor Ativa */}
+        {/* RIGHT CLUSTER: Pincel, Esfumar (Dedo), Borracha, Camadas, Cor Ativa + Baixar App */}
         <div className="flex items-center gap-1 sm:gap-2.5">
+          {onOpenInstallModal && (
+            <button
+              id="header-install-app-btn"
+              onClick={onOpenInstallModal}
+              className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg bg-[#1a1e28] hover:bg-[#252b3a] border border-[#2b3346] hover:border-cyan-500/50 text-cyan-300 hover:text-white transition text-xs font-semibold shadow-sm"
+              title="Baixar FreeNote Studio para Tablet, Celular ou PC"
+            >
+              <Download size={14} className="text-cyan-400" />
+              <span className="hidden md:inline">Baixar App</span>
+            </button>
+          )}
+
           {/* 1. Pincel */}
           <button
             id="tool-brush-btn"

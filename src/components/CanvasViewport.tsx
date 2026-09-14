@@ -126,6 +126,7 @@ export function CanvasViewport({
   // High-performance canvas rendering refs (reusable offscreen canvas & RAF throttling)
   const clipCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const compositeRafId = useRef<number | null>(null);
+  const isUsingPen = useRef<boolean>(false);
 
   // Text Tool State
   const [activeText, setActiveText] = useState<TextObject | null>(null);
@@ -394,6 +395,15 @@ export function CanvasViewport({
   // Pointer Down handler
   const handlePointerDown = (e: React.PointerEvent) => {
     const isPen = e.pointerType === 'pen';
+
+    // Palm Rejection for Tablets / Apple Pencil
+    if (isPen) {
+      isUsingPen.current = true;
+    } else if (e.pointerType === 'touch' && isUsingPen.current && isDrawing.current) {
+      // Reject accidental palm touch while Apple Pencil is in active contact
+      return;
+    }
+
     const rawPressure = isPen || pressureEnabled ? e.pressure || 0.5 : 0.8;
 
     // Hand tool or middle mouse or spacebar -> Pan
@@ -784,6 +794,12 @@ export function CanvasViewport({
 
     if (!isDrawing.current) return;
     isDrawing.current = false;
+
+    if (e.pointerType === 'pen') {
+      setTimeout(() => {
+        isUsingPen.current = false;
+      }, 150);
+    }
 
     try {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);

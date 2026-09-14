@@ -21,7 +21,8 @@ import {
   Play,
   Share2,
   Sliders,
-  Palette
+  Palette,
+  Download
 } from 'lucide-react';
 import { PaperTemplate, SymmetryMode } from '../types';
 
@@ -50,6 +51,7 @@ interface ProcreateActionsMenuProps {
   isFullscreen: boolean;
   onOpen3DViewer?: () => void;
   onOpenTimelapse?: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 type ActionTab = 'add' | 'canvas' | 'share' | 'video' | 'prefs' | 'help';
@@ -78,6 +80,7 @@ export function ProcreateActionsMenu({
   isFullscreen,
   onOpen3DViewer,
   onOpenTimelapse,
+  onOpenInstallModal,
 }: ProcreateActionsMenuProps) {
   const [activeTab, setActiveTab] = useState<ActionTab>('canvas');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -445,6 +448,29 @@ export function ProcreateActionsMenu({
                 <span className="text-[10px] text-violet-400">Camadas + Histórico</span>
               </button>
             </div>
+
+            {onOpenInstallModal && (
+              <div className="pt-2 border-t border-[#252a35]">
+                <button
+                  onClick={() => {
+                    onOpenInstallModal();
+                    onClose();
+                  }}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gradient-to-r from-cyan-600/25 to-blue-600/25 border border-cyan-500/40 hover:border-cyan-400 text-white font-semibold transition group shadow-md shadow-cyan-500/10"
+                >
+                  <div className="flex items-center gap-2">
+                    <Download size={16} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+                    <div className="text-left">
+                      <div className="font-semibold text-white">Baixar Aplicativo (PWA)</div>
+                      <div className="text-[10px] text-slate-300">Instalar no Celular, Tablet ou PC</div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/30 text-cyan-300 font-bold border border-cyan-500/40">
+                    Instalar
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -526,6 +552,25 @@ export function ProcreateActionsMenu({
               </div>
               <span className="text-[10px] text-slate-500">4 dedos</span>
             </button>
+
+            {onOpenInstallModal && (
+              <button
+                onClick={() => {
+                  onOpenInstallModal();
+                  onClose();
+                }}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-[#1a1d24] hover:bg-[#232834] border border-[#2c3344] transition text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <Download size={16} className="text-cyan-400" />
+                  <div>
+                    <div className="font-medium text-slate-200">Instalar Aplicativo Nativo</div>
+                    <div className="text-[10px] text-slate-400">Tablet, Celular ou PC (PWA)</div>
+                  </div>
+                </div>
+                <span className="text-[10px] text-cyan-400 font-bold">Abrir</span>
+              </button>
+            )}
           </div>
         )}
 

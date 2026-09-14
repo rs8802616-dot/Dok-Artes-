@@ -44,12 +44,22 @@ import { ProcreateAdjustmentModal } from './components/ProcreateAdjustmentModal'
 import { Procreate3DViewer } from './components/Procreate3DViewer';
 import { ProcreateTimelapseModal } from './components/ProcreateTimelapseModal';
 import { ProcreateMiniPalette } from './components/ProcreateMiniPalette';
+import { PWAInstallModal } from './components/PWAInstallModal';
 
 export default function App() {
   // Projects Storage
   const [projectsList, setProjectsList] = useState<ProjectMeta[]>([]);
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
   const [showGallery, setShowGallery] = useState(false);
+  const [showPWAInstallModal, setShowPWAInstallModal] = useState(false);
+  const [gestureToast, setGestureToast] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
+
+  const showGestureHUD = (text: string) => {
+    setGestureToast(text);
+    if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = window.setTimeout(() => setGestureToast(null), 1200);
+  };
 
   // Undo / Redo history
   const [undoStack, setUndoStack] = useState<string[]>([]);
@@ -237,6 +247,8 @@ export default function App() {
     const active = layers.find((l) => l.id === activeLayerId);
     if (!active) return;
 
+    showGestureHUD('Desfazer (2 Dedos)');
+
     const currentData = active.canvas.toDataURL('image/png');
     setRedoStack((prev) => [...prev, currentData]);
 
@@ -257,6 +269,8 @@ export default function App() {
     if (redoStack.length === 0) return;
     const active = layers.find((l) => l.id === activeLayerId);
     if (!active) return;
+
+    showGestureHUD('Refazer (3 Dedos)');
 
     const currentData = active.canvas.toDataURL('image/png');
     setUndoStack((prev) => [...prev, currentData]);
@@ -722,9 +736,15 @@ export default function App() {
   // Fullscreen toggle
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+      document.documentElement.requestFullscreen?.().then(() => {
+        setIsFullscreen(true);
+        showGestureHUD('Modo Cinema Ativado (4 Dedos)');
+      }).catch(() => {});
     } else {
-      document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen?.().then(() => {
+        setIsFullscreen(false);
+        showGestureHUD('Modo Normal');
+      }).catch(() => {});
     }
   };
 
@@ -765,6 +785,7 @@ export default function App() {
           }
         }}
         onOpenGallery={() => setShowGallery(true)}
+        onOpenInstallModal={() => setShowPWAInstallModal(true)}
         // Left Actions & Adjustments
         onToggleActions={() => {
           setShowActionsMenu(!showActionsMenu);
@@ -1059,6 +1080,7 @@ export default function App() {
           isFullscreen={isFullscreen}
           onOpen3DViewer={() => setShow3DViewer(true)}
           onOpenTimelapse={() => setShowTimelapseModal(true)}
+          onOpenInstallModal={() => setShowPWAInstallModal(true)}
         />
 
         {/* 8. Procreate Adjustments Menu (Magic Wand) */}
@@ -1254,6 +1276,22 @@ export default function App() {
           await loadProject(newProj);
         }}
       />
+
+      {/* 20. Procreate Native PWA Install Guide Modal (Mobile, Tablet, PC) */}
+      <PWAInstallModal
+        isOpen={showPWAInstallModal}
+        onClose={() => setShowPWAInstallModal(false)}
+      />
+
+      {/* 21. Tablet Gesture Feedback HUD (Desfazer, Refazer, Modo Cinema) */}
+      {gestureToast && (
+        <div
+          id="procreate-gesture-hud"
+          className="fixed top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 rounded-full bg-[#181b22]/95 border border-[#2e3444] text-white text-xs font-semibold shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 pointer-events-none tracking-wide"
+        >
+          {gestureToast}
+        </div>
+      )}
     </div>
   );
 }

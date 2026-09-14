@@ -362,3 +362,147 @@ export function applyLiquify(
 
   ctx.putImageData(imgData, startX, startY);
 }
+
+/**
+ * Procreate Motion Blur (Desfoque de Movimento Linear)
+ */
+export function applyMotionBlur(
+  ctx: CanvasRenderingContext2D,
+  amount: number,
+  angleRad: number = 0
+) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  if (amount <= 0) return;
+
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = w;
+  tempCanvas.height = h;
+  const tCtx = tempCanvas.getContext('2d');
+  if (!tCtx) return;
+
+  tCtx.drawImage(ctx.canvas, 0, 0);
+
+  const passes = Math.min(15, Math.max(3, Math.round(amount / 6)));
+  const step = (amount * 0.4) / passes;
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.globalAlpha = 1 / passes;
+
+  for (let i = -Math.floor(passes / 2); i <= Math.floor(passes / 2); i++) {
+    const ox = i * step * cosA;
+    const oy = i * step * sinA;
+    ctx.drawImage(tempCanvas, ox, oy);
+  }
+  ctx.globalAlpha = 1.0;
+}
+
+/**
+ * Procreate Bloom (Florescer / Brilho Difuso)
+ */
+export function applyBloom(ctx: CanvasRenderingContext2D, amount: number) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  if (amount <= 0) return;
+
+  const blurRadius = Math.max(2, Math.round((amount / 100) * 24));
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = w;
+  tempCanvas.height = h;
+  const tCtx = tempCanvas.getContext('2d');
+  if (!tCtx) return;
+
+  // Draw blurred bright layer
+  tCtx.filter = `blur(${blurRadius}px) brightness(1.2)`;
+  tCtx.drawImage(ctx.canvas, 0, 0);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = Math.min(1.0, amount / 80);
+  ctx.drawImage(tempCanvas, 0, 0);
+  ctx.restore();
+}
+
+/**
+ * Procreate Glitch (Falha Técnica / Aberração Cromática VHS)
+ */
+export function applyGlitch(ctx: CanvasRenderingContext2D, amount: number) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  if (amount <= 0) return;
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const src = new Uint8ClampedArray(imgData.data);
+  const dst = imgData.data;
+
+  const maxShift = Math.max(1, Math.round((amount / 100) * 16));
+
+  for (let y = 0; y < h; y++) {
+    // Occasional horizontal glitch slices
+    const isGlitchSlice = (y % 12 < 3 && amount > 25);
+    const sliceShift = isGlitchSlice ? Math.round((Math.sin(y * 0.4) * maxShift * 1.5)) : 0;
+    const shift = Math.round(maxShift * 0.8) + sliceShift;
+
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      if (src[idx + 3] === 0) continue;
+
+      // Shift Red channel to left
+      const redX = Math.max(0, Math.min(w - 1, x - shift));
+      const redIdx = (y * w + redX) * 4;
+      dst[idx] = src[redIdx]; // Red
+
+      // Blue channel slightly shifted right
+      const blueX = Math.max(0, Math.min(w - 1, x + Math.round(shift * 0.7)));
+      const blueIdx = (y * w + blueX) * 4;
+      dst[idx + 2] = src[blueIdx + 2]; // Blue
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
+/**
+ * Procreate Halftone (Meio-tom / Reticulado de Impressão)
+ */
+export function applyHalftone(ctx: CanvasRenderingContext2D, amount: number) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  if (amount <= 0) return;
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const src = new Uint8ClampedArray(imgData.data);
+  const dst = imgData.data;
+
+  const dotSpacing = Math.max(3, Math.round(4 + (amount / 100) * 8));
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      if (src[idx + 3] === 0) continue;
+
+      // Center of local cell
+      const cx = Math.floor(x / dotSpacing) * dotSpacing + dotSpacing / 2;
+      const cy = Math.floor(y / dotSpacing) * dotSpacing + dotSpacing / 2;
+      const dist = Math.hypot(x - cx, y - cy);
+
+      const centerIdx = (Math.min(h - 1, Math.round(cy)) * w + Math.min(w - 1, Math.round(cx))) * 4;
+      const lum = (src[centerIdx] * 0.299 + src[centerIdx + 1] * 0.587 + src[centerIdx + 2] * 0.114) / 255;
+      const maxRadius = (dotSpacing / 2) * (1 - lum);
+
+      if (dist < maxRadius) {
+        dst[idx] = Math.max(0, src[centerIdx] - 60);
+        dst[idx + 1] = Math.max(0, src[centerIdx + 1] - 60);
+        dst[idx + 2] = Math.max(0, src[centerIdx + 2] - 60);
+      } else {
+        dst[idx] = Math.min(255, src[centerIdx] + 40);
+        dst[idx + 1] = Math.min(255, src[centerIdx + 1] + 40);
+        dst[idx + 2] = Math.min(255, src[centerIdx + 2] + 40);
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}

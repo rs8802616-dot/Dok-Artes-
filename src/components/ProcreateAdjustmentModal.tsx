@@ -6,7 +6,11 @@ import {
   applyGradientMap,
   applyNoise,
   applySharpen,
-  applyImageAdjustments
+  applyImageAdjustments,
+  applyMotionBlur,
+  applyBloom,
+  applyGlitch,
+  applyHalftone
 } from '../utils/filterEngine';
 
 interface ProcreateAdjustmentModalProps {
@@ -93,6 +97,14 @@ export function ProcreateAdjustmentModal({
       applyGradientMap(ctx, presets[selectedGradient] || presets.sunset);
     } else if (activeAdjustment === 'invert') {
       applyImageAdjustments(ctx, { invert: true });
+    } else if (activeAdjustment === 'motion_blur') {
+      applyMotionBlur(ctx, percentage);
+    } else if (activeAdjustment === 'bloom') {
+      applyBloom(ctx, percentage);
+    } else if (activeAdjustment === 'glitch') {
+      applyGlitch(ctx, percentage);
+    } else if (activeAdjustment === 'halftone') {
+      applyHalftone(ctx, percentage);
     }
 
     onApplyChanges();

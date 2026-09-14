@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#121418"/>
+      <stop offset="50%" stop-color="#181b22"/>
+      <stop offset="100%" stop-color="#1f232d"/>
+    </linearGradient>
+    <linearGradient id="brushGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="35%" stop-color="#3b82f6"/>
+      <stop offset="70%" stop-color="#d946ef"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <!-- Squircle Base -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bgGrad)" stroke="#2b3140" stroke-width="4"/>
+  
+  <!-- Subtle Internal Ring -->
+  <rect x="28" y="28" width="456" height="456" rx="96" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="2"/>
+
+  <!-- Iconic Procreate Colorful Brush Ribbon -->
+  <path d="M 110 370 C 170 390, 210 280, 260 250 C 310 220, 360 280, 410 160 C 390 130, 320 170, 270 210 C 220 250, 180 340, 110 370 Z" 
+        fill="url(#brushGrad)" filter="url(#glow)"/>
+  
+  <!-- Subtle Stylus Tip / Flare -->
+  <circle cx="410" cy="155" r="8" fill="#ffffff" opacity="0.9"/>
+</svg>

@@ -185,6 +185,31 @@ Quando o usuário solicitar novas funcionalidades, siga as regras abaixo:
 
 ## 6. Histórico de Alterações (Changelog)
 
+### [2026-09-14] - Auditoria de Recursos Procreate e Conexão de Filtros de Ajuste Avançados
+- **Auditoria Comparativa Fiel ao Procreate**:
+  - Verificação completa de todos os 10 módulos centrais do Procreate (Canvas, Pincéis, Camadas, Cores, Seleção, Transformação, Ajustes, Vídeo, Animação e 3D).
+- **Conexão de Filtros de Ajustes no Motor Gráfico**:
+  - Implementação e ligação direta no `filterEngine.ts` e `ProcreateAdjustmentModal.tsx` de:
+    - *Desfoque de Movimento* (`applyMotionBlur`): Desfoque cinético linear direcional multipasse.
+    - *Florescer / Bloom* (`applyBloom`): Difusão de altas luzes em modo `screen`.
+    - *Glitch / Falha Técnica* (`applyGlitch`): Deslocamento de canais RGB cromático e linhas horizontais de interferência VHS.
+    - *Meio-tom / Halftone* (`applyHalftone`): Reticulado pontilhado estilo serigrafia vintage e retículas de mangá.
+- **Transparência Técnica de Limitações Web vs Nativo iPadOS**:
+  - Mapeadas as diferenças inerentes a um aplicativo web PWA em relação ao app nativo de iPadOS da Apple (Valkyrie Engine em Metal vs Canvas 2D/WebGL, arquivos proprietários `.brushset` e árvore aninhada de pastas de camadas).
+
+### [2026-09-14] - Suporte Completo a PWA (Instalar no Tablet, Celular e PC) e Fidelidade Ergonômica Procreate para Tablet
+- **Instalação PWA Nativa (Celular, Tablet e PC)**:
+  - Integração do `vite-plugin-pwa` no `vite.config.ts` com cache offline via Service Worker, manifesto de aplicativo (`manifest.webmanifest`) com orientação `landscape-primary`, display `standalone` e tema Procreate `#0a0c10`.
+  - Geração de pacote completo de ícones PWA (`pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png`, `apple-touch-icon.png` e `icon.svg`).
+  - Criação do hook `usePWAInstall` com detecção inteligente de plataforma (iOS/iPadOS vs Android vs Desktop/Chrome) e captura do evento `beforeinstallprompt`.
+  - Criação do componente `PWAInstallModal.tsx` com guia passo a passo ilustrado para instalar no iPad/iPhone (Compartilhar -> Adicionar à Tela de Início), Android e Computador (botão Instalar direto no navegador).
+  - Adicionado botão "Baixar App" no `ProcreateHeader` e opções dedicadas nas abas de Compartilhar e Preferências do `ProcreateActionsMenu`.
+- **Fidelidade Ergonômica de Tablet (Procreate iPadOS 1:1)**:
+  - **Rejeição de Palma Inteligente (Palm Rejection)**: Detecção do tipo de ponteiro (`pointerType === 'pen'`) no `CanvasViewport.tsx`, bloqueando toques acidentais da mão e repouso de palma sobre a tela do tablet durante a pintura com caneta stylus/Apple Pencil.
+  - **Barra Lateral Ajustável Verticalmente**: O botão modificador do `ProcreateSidebar` agora permite arrastar a barra para cima ou para baixo para ajustar ergonomicamente à altura do polegar do usuário no tablet.
+  - **Alvos de Toque Aprimorados**: Aumento das dimensões dos controles da barra lateral (`w-10 sm:w-11`, sliders `h-38 sm:h-44`, botões `10x10 / 11x11`), permitindo toque preciso com dedos ou caneta.
+  - **HUD de Gestos na Tela**: Notificação flutuante elegante ao acionar gestos com 2 dedos (Desfazer), 3 dedos (Refazer) e 4 dedos (Modo Cinema).
+
 ### [2026-09-14] - Correção de Detecção Quadrado vs Círculo e Otimização Extrema de Renderização (Anti-Lag)
 - **Correção da Detecção de Quadrado (QuickShape)**:
   - Implementado classificador geométrico com análise de cantos vivos (*sharp corners*, detecção de 4 quebras de direção tangencial de ~90°) e proximidade com os 4 vértices do bounding box.
