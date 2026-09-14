@@ -9,7 +9,8 @@ import {
   Point,
   TextObject,
   TransformSelection,
-  AnimationFrameData
+  AnimationFrameData,
+  QuickShapeData
 } from '../types';
 import {
   drawBrushSegment,
@@ -18,7 +19,8 @@ import {
   getSymmetricPoints,
   floodFill,
   drawShape,
-  detectQuickShape
+  detectQuickShape,
+  QuickShapeResult
 } from '../utils/drawingEngine';
 import { renderPaperBackground } from '../utils/paperRenderer';
 
@@ -44,13 +46,13 @@ interface CanvasViewportProps {
   onUpdatePanZoom: (pan: { x: number; y: number }, zoom: number) => void;
   onPickColor: (hex: string) => void;
   onCommitStroke: () => void;
-  onionSkinEnabled: boolean;
+  onionSkinEnabled?: boolean;
   frames?: AnimationFrameData[];
   currentFrameIndex?: number;
   onUndo?: () => void;
   onRedo?: () => void;
   onToggleZen?: () => void;
-  onQuickShapeDetected?: (shapeName: string) => void;
+  onQuickShapeDetected?: (shapeName: string, shapeData?: QuickShapeData) => void;
 }
 
 export function CanvasViewport({
@@ -114,6 +116,16 @@ export function CanvasViewport({
   const currentStrokePoints = useRef<Point[]>([]);
   const strokeStartTime = useRef<number>(0);
   const quickShapeTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // QuickShape Procreate hold & snap tracking
+  const preStrokeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const quickShapeActive = useRef<boolean>(false);
+  const activeQuickShapeData = useRef<QuickShapeResult | null>(null);
+  const stationaryAnchor = useRef<{ x: number; y: number; time: number }>({ x: 0, y: 0, time: 0 });
+
+  // High-performance canvas rendering refs (reusable offscreen canvas & RAF throttling)
+  const clipCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const compositeRafId = useRef<number | null>(null);
 
   // Text Tool State
   const [activeText, setActiveText] = useState<TextObject | null>(null);
@@ -184,11 +196,17 @@ export function CanvasViewport({
           .find((l) => !l.clippingMask && l.visible);
 
         if (baseLayer) {
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = width;
-          tempCanvas.height = height;
+          if (!clipCanvasRef.current) {
+            clipCanvasRef.current = document.createElement('canvas');
+          }
+          const tempCanvas = clipCanvasRef.current;
+          if (tempCanvas.width !== width || tempCanvas.height !== height) {
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+          }
           const tCtx = tempCanvas.getContext('2d');
           if (tCtx) {
+            tCtx.clearRect(0, 0, width, height);
             tCtx.drawImage(layer.canvas, 0, 0);
             tCtx.globalCompositeOperation = 'destination-in';
             tCtx.drawImage(baseLayer.canvas, 0, 0);
@@ -205,8 +223,24 @@ export function CanvasViewport({
     });
   }, [layers, width, height, onionSkinEnabled, frames, currentFrameIndex]);
 
+  // Throttled composite request via requestAnimationFrame for silky-smooth 60/120fps stylus drawing
+  const requestComposite = useCallback(() => {
+    if (compositeRafId.current === null) {
+      compositeRafId.current = requestAnimationFrame(() => {
+        compositeLayers();
+        compositeRafId.current = null;
+      });
+    }
+  }, [compositeLayers]);
+
   useEffect(() => {
     compositeLayers();
+    return () => {
+      if (compositeRafId.current !== null) {
+        cancelAnimationFrame(compositeRafId.current);
+        compositeRafId.current = null;
+      }
+    };
   }, [compositeLayers]);
 
   // Convert client viewport coordinates to Canvas coordinates
@@ -254,6 +288,85 @@ export function CanvasViewport({
       onPickColor(hex);
     }
   };
+
+  // Procreate QuickShape snap trigger
+  const triggerQuickShapeSnap = useCallback(() => {
+    if (!isDrawing.current || currentTool !== 'brush' || currentStrokePoints.current.length < 8) return;
+    if (!activeLayer || activeLayer.locked) return;
+
+    const detected = detectQuickShape(currentStrokePoints.current);
+    if (!detected) return;
+
+    quickShapeActive.current = true;
+    activeQuickShapeData.current = detected;
+
+    // 1. Erase the crooked stroke from activeLayer.ctx completely!
+    if (preStrokeCanvasRef.current) {
+      activeLayer.ctx.clearRect(0, 0, width, height);
+      activeLayer.ctx.drawImage(preStrokeCanvasRef.current, 0, 0);
+      compositeLayers();
+    }
+
+    // 2. Render clean shape guide on previewCanvas
+    const pCanvas = previewCanvasRef.current;
+    if (pCanvas) {
+      const pCtx = pCanvas.getContext('2d');
+      if (pCtx) {
+        pCtx.clearRect(0, 0, width, height);
+        drawShape(
+          pCtx,
+          detected.type === 'circle'
+            ? 'circle'
+            : detected.type === 'square'
+            ? 'square'
+            : detected.type === 'ellipse'
+            ? 'ellipse'
+            : detected.type === 'line'
+            ? 'line'
+            : detected.type === 'triangle'
+            ? 'triangle'
+            : 'rect',
+          detected.p1.x,
+          detected.p1.y,
+          detected.p2.x,
+          detected.p2.y,
+          brushColor,
+          brushSize,
+          false
+        );
+      }
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(25);
+      } catch (_) {}
+    }
+
+    const shapeName =
+      detected.type === 'line'
+        ? 'Linha Criada'
+        : detected.type === 'circle'
+        ? 'Círculo Criado'
+        : detected.type === 'ellipse'
+        ? 'Elipse Criada'
+        : detected.type === 'square'
+        ? 'Quadrado Criado'
+        : detected.type === 'triangle'
+        ? 'Triângulo Criado'
+        : 'Retângulo Criado';
+
+    onQuickShapeDetected?.(shapeName, {
+      type: detected.type,
+      p1: detected.p1,
+      p2: detected.p2,
+      center: detected.center,
+      radius: detected.radius,
+      color: brushColor,
+      lineWidth: brushSize,
+      extraPoints: detected.extraPoints,
+    });
+  }, [activeLayer, brushColor, brushSize, compositeLayers, currentTool, height, onQuickShapeDetected, width]);
 
   // Bake active text onto layer
   const commitTextToLayer = () => {
@@ -368,6 +481,22 @@ export function CanvasViewport({
       return;
     }
 
+    // Save clean active layer snapshot before stroke begins
+    if (!preStrokeCanvasRef.current) {
+      preStrokeCanvasRef.current = document.createElement('canvas');
+    }
+    preStrokeCanvasRef.current.width = width;
+    preStrokeCanvasRef.current.height = height;
+    const preCtx = preStrokeCanvasRef.current.getContext('2d');
+    if (preCtx && activeLayer) {
+      preCtx.clearRect(0, 0, width, height);
+      preCtx.drawImage(activeLayer.canvas, 0, 0);
+    }
+
+    quickShapeActive.current = false;
+    activeQuickShapeData.current = null;
+    stationaryAnchor.current = { x: coords.x, y: coords.y, time: Date.now() };
+
     isDrawing.current = true;
     lastPoint.current = startPt;
     currentStrokePoints.current = [startPt];
@@ -404,34 +533,13 @@ export function CanvasViewport({
       compositeLayers();
     }
 
-    // QuickShape timer: if holding stationary for 650ms, detect shape!
+    // QuickShape timer: if holding stationary for 480ms, detect and snap shape!
     if (quickShapeTimer.current) clearTimeout(quickShapeTimer.current);
-    quickShapeTimer.current = setTimeout(() => {
-      if (isDrawing.current && currentStrokePoints.current.length > 8) {
-        const detected = detectQuickShape(currentStrokePoints.current);
-        if (detected) {
-          // Render QuickShape guide on preview canvas
-          const pCanvas = previewCanvasRef.current;
-          if (pCanvas) {
-            const pCtx = pCanvas.getContext('2d');
-            if (pCtx) {
-              pCtx.clearRect(0, 0, width, height);
-              drawShape(
-                pCtx,
-                detected.type === 'line' ? 'line' : detected.type === 'circle' ? 'circle' : 'rect',
-                detected.p1.x,
-                detected.p1.y,
-                detected.p2.x,
-                detected.p2.y,
-                brushColor,
-                brushSize,
-                false
-              );
-            }
-          }
-        }
-      }
-    }, 650);
+    if (currentTool === 'brush') {
+      quickShapeTimer.current = setTimeout(() => {
+        triggerQuickShapeSnap();
+      }, 480);
+    }
   };
 
   // Pointer Move handler
@@ -493,6 +601,106 @@ export function CanvasViewport({
 
     currentStrokePoints.current.push(pt);
 
+    // 1. IF QUICKSHAPE IS ACTIVE (Holding & Dragging to resize/orient shape):
+    if (quickShapeActive.current && activeQuickShapeData.current) {
+      const shape = activeQuickShapeData.current;
+      const pCanvas = previewCanvasRef.current;
+      if (!pCanvas) return;
+      const pCtx = pCanvas.getContext('2d');
+      if (!pCtx) return;
+
+      if (shape.type === 'line') {
+        let endX = coords.x;
+        let endY = coords.y;
+        const dx = coords.x - shape.p1.x;
+        const dy = coords.y - shape.p1.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 15) {
+          const angle = Math.atan2(dy, dx);
+          const deg = ((angle * 180) / Math.PI + 360) % 360;
+          const snapAngles = [0, 45, 90, 135, 180, 225, 270, 315, 360];
+          for (const sa of snapAngles) {
+            if (Math.abs(deg - sa) < 6 || Math.abs(deg - (sa - 360)) < 6) {
+              const rad = (sa * Math.PI) / 180;
+              endX = shape.p1.x + Math.cos(rad) * dist;
+              endY = shape.p1.y + Math.sin(rad) * dist;
+              break;
+            }
+          }
+        }
+        shape.p2 = { x: endX, y: endY };
+      } else if (shape.type === 'circle') {
+        const center = shape.center || {
+          x: (shape.p1.x + shape.p2.x) / 2,
+          y: (shape.p1.y + shape.p2.y) / 2,
+        };
+        const currentDist = Math.hypot(coords.x - center.x, coords.y - center.y);
+        const newRadius = Math.max(6, currentDist);
+        shape.radius = newRadius;
+        shape.p1 = { x: center.x - newRadius, y: center.y - newRadius };
+        shape.p2 = { x: center.x + newRadius, y: center.y + newRadius };
+      } else if (shape.type === 'ellipse') {
+        const center = shape.center || {
+          x: (shape.p1.x + shape.p2.x) / 2,
+          y: (shape.p1.y + shape.p2.y) / 2,
+        };
+        const rx = Math.max(6, Math.abs(coords.x - center.x));
+        const ry = Math.max(6, Math.abs(coords.y - center.y));
+        shape.p1 = { x: center.x - rx, y: center.y - ry };
+        shape.p2 = { x: center.x + rx, y: center.y + ry };
+      } else if (shape.type === 'square') {
+        const center = shape.center || {
+          x: (shape.p1.x + shape.p2.x) / 2,
+          y: (shape.p1.y + shape.p2.y) / 2,
+        };
+        const side = Math.max(8, Math.max(Math.abs(coords.x - center.x), Math.abs(coords.y - center.y)));
+        shape.p1 = { x: center.x - side, y: center.y - side };
+        shape.p2 = { x: center.x + side, y: center.y + side };
+      } else if (shape.type === 'rect') {
+        shape.p2 = { x: coords.x, y: coords.y };
+      } else if (shape.type === 'triangle') {
+        shape.p2 = { x: coords.x, y: coords.y };
+      }
+
+      // Live redraw on preview canvas
+      pCtx.clearRect(0, 0, width, height);
+      drawShape(
+        pCtx,
+        shape.type === 'circle'
+          ? 'circle'
+          : shape.type === 'square'
+          ? 'square'
+          : shape.type === 'ellipse'
+          ? 'ellipse'
+          : shape.type === 'line'
+          ? 'line'
+          : shape.type === 'triangle'
+          ? 'triangle'
+          : 'rect',
+        shape.p1.x,
+        shape.p1.y,
+        shape.p2.x,
+        shape.p2.y,
+        brushColor,
+        brushSize,
+        false
+      );
+      return;
+    }
+
+    // 2. CHECK HOLD TIMER FOR QUICKSHAPE:
+    // If movement is detected, reset stationaryAnchor and refresh the 480ms hold timer
+    const distFromAnchor = Math.hypot(coords.x - stationaryAnchor.current.x, coords.y - stationaryAnchor.current.y);
+    if (distFromAnchor > 8) {
+      stationaryAnchor.current = { x: coords.x, y: coords.y, time: Date.now() };
+      if (quickShapeTimer.current) clearTimeout(quickShapeTimer.current);
+      if (currentTool === 'brush') {
+        quickShapeTimer.current = setTimeout(() => {
+          triggerQuickShapeSnap();
+        }, 480);
+      }
+    }
+
     // Live preview for Shapes
     if (currentTool === 'shapes') {
       const start = currentStrokePoints.current[0];
@@ -540,7 +748,7 @@ export function CanvasViewport({
           brushOpacity
         );
       }
-      compositeLayers();
+      requestComposite();
     } else if (currentTool === 'eraser') {
       const last = lastPoint.current;
       const symLast = getSymmetricPoints(last, width, height, symmetryMode);
@@ -549,10 +757,10 @@ export function CanvasViewport({
       for (let i = 0; i < symLast.length; i++) {
         drawEraserSegment(activeLayer.ctx, symLast[i], symCurrent[i], brushSize, brushOpacity);
       }
-      compositeLayers();
+      requestComposite();
     } else if (currentTool === 'smudge') {
       drawSmudgeSegment(activeLayer.ctx, lastPoint.current, pt, brushSize, brushOpacity);
-      compositeLayers();
+      requestComposite();
     }
 
     lastPoint.current = pt;
@@ -561,6 +769,10 @@ export function CanvasViewport({
   // Pointer Up handler
   const handlePointerUp = (e: React.PointerEvent) => {
     if (quickShapeTimer.current) clearTimeout(quickShapeTimer.current);
+    if (compositeRafId.current !== null) {
+      cancelAnimationFrame(compositeRafId.current);
+      compositeRafId.current = null;
+    }
 
     if (isPanning.current) {
       isPanning.current = false;
@@ -588,31 +800,72 @@ export function CanvasViewport({
 
     if (!activeLayer || activeLayer.locked) return;
 
-    // Check if QuickShape detected
-    const points = currentStrokePoints.current;
-    if (currentTool === 'brush' && points.length > 10) {
-      const detected = detectQuickShape(points);
-      if (detected) {
+    // IF QUICKSHAPE WAS TRIGGERED WHILE HOLDING:
+    if (quickShapeActive.current && activeQuickShapeData.current) {
+      // 1. Guarantee no crooked stroke trace by restoring preStroke canvas
+      if (preStrokeCanvasRef.current) {
+        activeLayer.ctx.clearRect(0, 0, width, height);
+        activeLayer.ctx.drawImage(preStrokeCanvasRef.current, 0, 0);
+      }
+
+      // 2. Draw the final crisp geometric shape on activeLayer
+      const finalShape = activeQuickShapeData.current;
+      activeLayer.ctx.globalCompositeOperation = activeLayer.alphaLocked ? 'source-atop' : 'source-over';
+      const shapeType =
+        finalShape.type === 'circle'
+          ? 'circle'
+          : finalShape.type === 'square'
+          ? 'square'
+          : finalShape.type === 'ellipse'
+          ? 'ellipse'
+          : finalShape.type === 'line'
+          ? 'line'
+          : finalShape.type === 'triangle'
+          ? 'triangle'
+          : 'rect';
+
+      const symP1 = getSymmetricPoints(finalShape.p1, width, height, symmetryMode);
+      const symP2 = getSymmetricPoints(finalShape.p2, width, height, symmetryMode);
+      for (let i = 0; i < symP1.length; i++) {
         drawShape(
           activeLayer.ctx,
-          detected.type === 'line' ? 'line' : detected.type === 'circle' ? 'circle' : 'rect',
-          detected.p1.x,
-          detected.p1.y,
-          detected.p2.x,
-          detected.p2.y,
+          shapeType,
+          symP1[i].x,
+          symP1[i].y,
+          symP2[i].x,
+          symP2[i].y,
           brushColor,
           brushSize,
           false
         );
-        const name =
-          detected.type === 'line'
-            ? 'Linha Criada'
-            : detected.type === 'circle'
-            ? 'Círculo Criado'
-            : 'Retângulo Criado';
-        onQuickShapeDetected?.(name);
       }
-    } else if (currentTool === 'shapes' && points.length > 0) {
+
+      const shapeLabel =
+        shapeType === 'circle'
+          ? 'Círculo Criado'
+          : shapeType === 'square'
+          ? 'Quadrado Criado'
+          : shapeType === 'ellipse'
+          ? 'Elipse Criada'
+          : shapeType === 'line'
+          ? 'Linha Criada'
+          : shapeType === 'triangle'
+          ? 'Triângulo Criado'
+          : 'Retângulo Criado';
+      onQuickShapeDetected?.(shapeLabel, finalShape);
+
+      quickShapeActive.current = false;
+      activeQuickShapeData.current = null;
+      currentStrokePoints.current = [];
+      lastPoint.current = null;
+      compositeLayers();
+      onCommitStroke();
+      return;
+    }
+
+    // IF SHAPES TOOL:
+    const points = currentStrokePoints.current;
+    if (currentTool === 'shapes' && points.length > 0) {
       const start = points[0];
       const end = points[points.length - 1];
       drawShape(
@@ -628,6 +881,8 @@ export function CanvasViewport({
       );
     }
 
+    // REGULAR FREEHAND STROKE (NO QuickShape hold):
+    // Stroke is already drawn on activeLayer.ctx! Do not overwrite or replace!
     currentStrokePoints.current = [];
     lastPoint.current = null;
     compositeLayers();

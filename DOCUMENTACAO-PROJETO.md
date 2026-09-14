@@ -103,7 +103,11 @@ O coração visual e interativo da aplicação:
   - Toque com **3 dedos rápido**: Refazer (*Redo*).
   - Toque com **4 dedos**: Alternar Modo Zen / Tela cheia.
   - Pinça com **2 dedos contínua**: Zoom suave (escala 0.1x a 10x) e pan de deslocamento.
-- **QuickShape**: Ao desenhar uma linha reta, círculo ou retângulo e manter o ponteiro parado por mais de 450ms, o traço bruto é substituído pela forma geométrica vetorizada correspondente, exibindo notificação no topo.
+- **QuickShape Fiel ao Procreate**:
+  - Ao desenhar uma forma à mão livre (círculo, elipse, retângulo, quadrado, triângulo ou linha) e manter o ponteiro parado por mais de 450ms, o QuickShape é ativado instantaneamente.
+  - **Substituição Limpa do Traço Torto**: O motor restaura a camada a partir de um snapshot pré-traço em memória (`preStrokeCanvasRef`), eliminando 100% dos resíduos do traço irregular antes de desenhar a forma geométrica limpa.
+  - **Redimensionamento e Rotação Dinâmica**: Enquanto o usuário mantém o toque ou a caneta pressionada após o snap, mover a ponta redimensiona a forma geometricamente (raio do círculo a partir do centro, proporção do quadrado ou orientação da linha reta com snap magnético a ângulos de 45° e 90°).
+  - **Barra Flutuante de Edição de Forma**: Ao finalizar a forma, surge a notificação com o botão *"Editar Forma"*, permitindo alternar entre variações geométricas (ex: *Círculo Perfeito* vs *Elipse*, *Quadrado Perfeito* vs *Retângulo*).
 - **Simetria em Tempo Real**: Suporte a eixos vertical, horizontal, quádruplo e radial.
 
 ### 4.3. Barra Superior (`src/components/ProcreateHeader.tsx`)
@@ -180,6 +184,25 @@ Quando o usuário solicitar novas funcionalidades, siga as regras abaixo:
 ---
 
 ## 6. Histórico de Alterações (Changelog)
+
+### [2026-09-14] - Correção de Detecção Quadrado vs Círculo e Otimização Extrema de Renderização (Anti-Lag)
+- **Correção da Detecção de Quadrado (QuickShape)**:
+  - Implementado classificador geométrico com análise de cantos vivos (*sharp corners*, detecção de 4 quebras de direção tangencial de ~90°) e proximidade com os 4 vértices do bounding box.
+  - Corrigida falha onde a baixa variância radial de um quadrado era erroneamente interpretada como círculo. Agora, um quadrado é detectado com precisão como `square` e retângulos como `rect`. Círculos e elipses são acionados apenas para contornos suaves sem vértices ortogonais.
+- **Otimização de Renderização e Eliminação de Travamentos (Latência Zero da Caneta)**:
+  - **Compositing via `requestAnimationFrame`**: A renderização das camadas (`compositeLayers`) durante o desenho foi convertida para um scheduler via RAF (`requestComposite`), limitando a taxa ao display (60/120Hz) e evitando o congelamento da fila de eventos de ponteiro (*pen lag*).
+  - **Reutilização de Canvas de Clipping**: Substituída a alocação contínua de canvas de 2048x2048 por uma referência em memória (`clipCanvasRef`), eliminando pausas por Garbage Collection.
+  - **Auto-save Desacoplado e Debounced**: O salvamento no IndexedDB (`persistCurrentProject`), que convertia todas as camadas em strings PNG síncronas a cada final de traço, agora opera com debounce de 1500ms.
+  - **Time-lapse Assíncrono com Miniatura**: Captura de snapshots do time-lapse agora processa em background sobre miniatura de 320x320, liberando instantaneamente o ciclo de desenho para o próximo traço.
+
+### [2026-09-14] - Correção e Aprimoramento Completo do Motor QuickShape (Procreate-like)
+- **Substituição do Traço Torto**: Implementado snapshot de camada pré-traço (`preStrokeCanvasRef`). Ao ativar o QuickShape segurando o ponteiro por mais de 450ms, o traço irregular é completamente revertido e substituído pela forma geométrica limpa.
+- **Detecção e Cálculo Acurado de Tamanho**:
+  - **Círculos**: Centro geométrico e raio calculados com base na média radial real dos pontos traçados pelo usuário, mantendo exatamente o tamanho e proporção pretendidos.
+  - **Quadrados e Retângulos**: Detecção precisa da proporção de aspecto (aspect ratio ~1.0 detecta quadrado perfeito; outras proporções geram retângulos limpos).
+  - **Linhas Retas**: Detecção com tolerância de desvio, cálculo da reta entre o início e o ponto de parada e snap magnético inteligente a múltiplos de 45° ao segurar e arrastar.
+- **Manipulação Interativa ao Segurar**: Enquanto o usuário mantiver o ponteiro pressionado após o snap, arrastar a ponta redimensiona e ajusta a orientação da forma em tempo real na camada de preview.
+- **Barra Contextual "Editar Forma"**: Notificação com link para abrir a barra flutuante superior de edição de forma, permitindo ao usuário alternar com 1 toque entre *Círculo Perfeito* e *Elipse*, ou entre *Quadrado Perfeito* e *Retângulo*.
 
 ### [2026-09-14] - Suíte Procreate Pro: Brush Studio, Ajustes Avançados, Estúdio 3D e Time-lapse
 - **Brush Studio Completo**: Implementado modal profissional com abas para ajuste de Stroke, Shape, Grain, Dynamics, Dual Brush, Properties e About, com scratchpad de teste integrado e persistência de streamline e ajustes.

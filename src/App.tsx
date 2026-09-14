@@ -10,7 +10,8 @@ import {
   PaperTemplate,
   SymmetryMode,
   BlendMode,
-  AnimationFrameData
+  AnimationFrameData,
+  QuickShapeData
 } from './types';
 import { BRUSH_PRESETS, CANVAS_PRESETS } from './utils/constants';
 import {
@@ -21,7 +22,7 @@ import {
   duplicateProject,
   createNewDefaultProject
 } from './utils/storage';
-import { floodFill } from './utils/drawingEngine';
+import { floodFill, drawShape, getSymmetricPoints } from './utils/drawingEngine';
 import { applyImageAdjustments } from './utils/filterEngine';
 
 import { CanvasViewport } from './components/CanvasViewport';
@@ -102,6 +103,8 @@ export default function App() {
   const [activeAdjustment, setActiveAdjustment] = useState<string | null>(null);
   const [adjustmentValue, setAdjustmentValue] = useState<number>(0.15);
   const [quickShapeNotification, setQuickShapeNotification] = useState<string | null>(null);
+  const [lastQuickShape, setLastQuickShape] = useState<QuickShapeData | null>(null);
+  const [showQuickShapeEditor, setShowQuickShapeEditor] = useState<boolean>(false);
   const [colorDropThreshold, setColorDropThreshold] = useState<number | null>(null);
 
   // Animation frames
@@ -270,12 +273,24 @@ export default function App() {
     img.src = nextData;
   };
 
-  // Auto-save project
+  // Auto-save project with lightweight thumbnail and debounced scheduling
+  const persistTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const persistCurrentProject = useCallback(async () => {
     if (!currentProject || layers.length === 0) return;
     try {
       const topLayer = layers.find((l) => l.visible) || layers[0];
-      const thumbnail = topLayer?.canvas.toDataURL('image/jpeg', 0.6) || '';
+      let thumbnail = '';
+      if (topLayer) {
+        const thumb = document.createElement('canvas');
+        thumb.width = 256;
+        thumb.height = 256;
+        const tCtx = thumb.getContext('2d');
+        if (tCtx) {
+          tCtx.drawImage(topLayer.canvas, 0, 0, 256, 256);
+          thumbnail = thumb.toDataURL('image/jpeg', 0.7);
+        }
+      }
 
       const updatedProj: ProjectData = {
         ...currentProject,
@@ -305,18 +320,36 @@ export default function App() {
     }
   }, [currentProject, layers, paperTemplate, activeLayerId, frames]);
 
+  const schedulePersistProject = useCallback(() => {
+    if (persistTimeoutRef.current) {
+      clearTimeout(persistTimeoutRef.current);
+    }
+    persistTimeoutRef.current = setTimeout(() => {
+      persistCurrentProject();
+    }, 1500);
+  }, [persistCurrentProject]);
+
   const handleCommitStroke = () => {
     pushUndoSnapshot();
-    persistCurrentProject();
+    schedulePersistProject();
 
-    // Capture time-lapse frame for Procreate interactive replay
+    // Capture time-lapse frame asynchronously using downscaled snapshot
     if (layers.length > 0) {
       const topVisible = layers.find((l) => l.visible);
       if (topVisible) {
-        try {
-          const snap = topVisible.canvas.toDataURL('image/jpeg', 0.6);
-          setTimelapseSnapshots((prev) => [...prev.slice(-180), snap]);
-        } catch (_) {}
+        setTimeout(() => {
+          try {
+            const thumb = document.createElement('canvas');
+            thumb.width = 320;
+            thumb.height = 320;
+            const tCtx = thumb.getContext('2d');
+            if (tCtx) {
+              tCtx.drawImage(topVisible.canvas, 0, 0, 320, 320);
+              const snap = thumb.toDataURL('image/jpeg', 0.6);
+              setTimelapseSnapshots((prev) => [...prev.slice(-180), snap]);
+            }
+          } catch (_) {}
+        }, 60);
       }
     }
   };
@@ -355,12 +388,84 @@ export default function App() {
     }
   };
 
-  // QuickShape Notification
-  const handleQuickShapeDetected = (shapeName: string) => {
+  // QuickShape Notification & Procreate Shape Editing
+  const handleQuickShapeDetected = (shapeName: string, shapeData?: QuickShapeData) => {
     setQuickShapeNotification(shapeName);
+    if (shapeData) {
+      setLastQuickShape(shapeData);
+    }
     setTimeout(() => {
       setQuickShapeNotification(null);
-    }, 2800);
+    }, 4500);
+  };
+
+  const handleEditQuickShape = () => {
+    if (lastQuickShape) {
+      setShowQuickShapeEditor(true);
+    }
+  };
+
+  const handleTransformQuickShape = (targetType: ShapeType) => {
+    if (!lastQuickShape || !currentProject) return;
+    const active = layers.find((l) => l.id === activeLayerId);
+    if (!active || active.locked) return;
+
+    // Pop the previous stroke state from undo stack to clear the drawn shape
+    if (undoStack.length > 0) {
+      const previousData = undoStack[undoStack.length - 1];
+      setUndoStack((prev) => prev.slice(0, -1));
+
+      const img = new Image();
+      img.onload = () => {
+        active.ctx.clearRect(0, 0, active.canvas.width, active.canvas.height);
+        active.ctx.drawImage(img, 0, 0);
+
+        active.ctx.globalCompositeOperation = active.alphaLocked ? 'source-atop' : 'source-over';
+        let p1 = { ...lastQuickShape.p1 };
+        let p2 = { ...lastQuickShape.p2 };
+
+        if (targetType === 'circle') {
+          const center = lastQuickShape.center || {
+            x: (p1.x + p2.x) / 2,
+            y: (p1.y + p2.y) / 2,
+          };
+          const r =
+            lastQuickShape.radius ||
+            Math.max(Math.abs(p2.x - p1.x), Math.abs(p2.y - p1.y)) / 2;
+          p1 = { x: center.x - r, y: center.y - r };
+          p2 = { x: center.x + r, y: center.y + r };
+        } else if (targetType === 'square') {
+          const center = lastQuickShape.center || {
+            x: (p1.x + p2.x) / 2,
+            y: (p1.y + p2.y) / 2,
+          };
+          const side = Math.max(Math.abs(p2.x - p1.x), Math.abs(p2.y - p1.y)) / 2;
+          p1 = { x: center.x - side, y: center.y - side };
+          p2 = { x: center.x + side, y: center.y + side };
+        }
+
+        const symP1 = getSymmetricPoints(p1, currentProject.width, currentProject.height, symmetryMode);
+        const symP2 = getSymmetricPoints(p2, currentProject.width, currentProject.height, symmetryMode);
+        for (let i = 0; i < symP1.length; i++) {
+          drawShape(
+            active.ctx,
+            targetType,
+            symP1[i].x,
+            symP1[i].y,
+            symP2[i].x,
+            symP2[i].y,
+            lastQuickShape.color,
+            lastQuickShape.lineWidth,
+            false
+          );
+        }
+
+        setLastQuickShape({ ...lastQuickShape, type: targetType, p1, p2 });
+        setLayers([...layers]);
+        handleCommitStroke();
+      };
+      img.src = previousData;
+    }
   };
 
   // Layer Actions
@@ -734,9 +839,83 @@ export default function App() {
         }}
         onCancelAdjustment={() => setActiveAdjustment(null)}
         quickShapeNotification={quickShapeNotification}
+        onEditQuickShape={handleEditQuickShape}
         colorDropThreshold={colorDropThreshold}
         onChangeColorDropThreshold={setColorDropThreshold}
       />
+
+      {/* QuickShape Procreate Floating Edit Bar */}
+      {showQuickShapeEditor && lastQuickShape && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 bg-[#161922]/95 backdrop-blur-md border border-[#2b3140] rounded-full px-3.5 py-1.5 flex items-center gap-2 shadow-2xl animate-in fade-in slide-in-from-top-2">
+          <span className="text-xs font-semibold text-slate-300 mr-1">Forma Detectada:</span>
+          {(lastQuickShape.type === 'circle' || lastQuickShape.type === 'ellipse') && (
+            <>
+              <button
+                onClick={() => handleTransformQuickShape('circle')}
+                className={`px-3 py-1 rounded-full text-xs transition ${
+                  lastQuickShape.type === 'circle'
+                    ? 'bg-sky-500 text-white font-bold shadow'
+                    : 'bg-[#222733] text-slate-300 hover:bg-[#2c3344]'
+                }`}
+              >
+                Círculo Perfeito
+              </button>
+              <button
+                onClick={() => handleTransformQuickShape('ellipse')}
+                className={`px-3 py-1 rounded-full text-xs transition ${
+                  lastQuickShape.type === 'ellipse'
+                    ? 'bg-sky-500 text-white font-bold shadow'
+                    : 'bg-[#222733] text-slate-300 hover:bg-[#2c3344]'
+                }`}
+              >
+                Elipse
+              </button>
+            </>
+          )}
+          {(lastQuickShape.type === 'rect' || lastQuickShape.type === 'square') && (
+            <>
+              <button
+                onClick={() => handleTransformQuickShape('rect')}
+                className={`px-3 py-1 rounded-full text-xs transition ${
+                  lastQuickShape.type === 'rect'
+                    ? 'bg-sky-500 text-white font-bold shadow'
+                    : 'bg-[#222733] text-slate-300 hover:bg-[#2c3344]'
+                }`}
+              >
+                Retângulo
+              </button>
+              <button
+                onClick={() => handleTransformQuickShape('square')}
+                className={`px-3 py-1 rounded-full text-xs transition ${
+                  lastQuickShape.type === 'square'
+                    ? 'bg-sky-500 text-white font-bold shadow'
+                    : 'bg-[#222733] text-slate-300 hover:bg-[#2c3344]'
+                }`}
+              >
+                Quadrado Perfeito
+              </button>
+            </>
+          )}
+          {lastQuickShape.type === 'line' && (
+            <span className="px-3 py-1 rounded-full text-xs font-bold bg-sky-500 text-white">
+              Linha Reta
+            </span>
+          )}
+          {lastQuickShape.type === 'triangle' && (
+            <span className="px-3 py-1 rounded-full text-xs font-bold bg-sky-500 text-white">
+              Triângulo
+            </span>
+          )}
+          <div className="h-4 w-px bg-slate-700 mx-1" />
+          <button
+            onClick={() => setShowQuickShapeEditor(false)}
+            className="text-xs px-3 py-1 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-semibold transition"
+            title="Concluir Edição da Forma"
+          >
+            Concluído
+          </button>
+        </div>
+      )}
 
       {/* 2. Main Workspace Canvas & Viewport */}
       <main className="flex-1 relative overflow-hidden flex items-center justify-center">

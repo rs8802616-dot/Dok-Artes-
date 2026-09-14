@@ -97,7 +97,18 @@ export interface BrushPreset {
   studioSettings?: BrushStudioSettings;
 }
 
-export type ShapeType = 'line' | 'arrow' | 'rect' | 'circle' | 'triangle' | 'star';
+export type ShapeType = 'line' | 'arrow' | 'rect' | 'circle' | 'triangle' | 'star' | 'ellipse' | 'square';
+
+export interface QuickShapeData {
+  type: 'line' | 'circle' | 'ellipse' | 'rect' | 'square' | 'triangle' | 'arc';
+  p1: { x: number; y: number };
+  p2: { x: number; y: number };
+  center?: { x: number; y: number };
+  radius?: number;
+  color: string;
+  lineWidth: number;
+  extraPoints?: { x: number; y: number }[];
+}
 
 export type PaperTemplate = 
   | 'blank'

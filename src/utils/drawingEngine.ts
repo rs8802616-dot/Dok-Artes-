@@ -472,14 +472,25 @@ export function drawShape(
     const rh = Math.abs(y2 - y1);
     if (fill) ctx.fillRect(rx, ry, rw, rh);
     ctx.strokeRect(rx, ry, rw, rh);
-  } else if (shape === 'circle') {
+  } else if (shape === 'square') {
     const rx = Math.min(x1, x2);
     const ry = Math.min(y1, y2);
-    const rw = Math.abs(x2 - x1);
-    const rh = Math.abs(y2 - y1);
-    const cx = rx + rw / 2;
-    const cy = ry + rh / 2;
-    ctx.ellipse(cx, cy, rw / 2, rh / 2, 0, 0, Math.PI * 2);
+    const side = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+    if (fill) ctx.fillRect(rx, ry, side, side);
+    ctx.strokeRect(rx, ry, side, side);
+  } else if (shape === 'circle') {
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const radius = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)) / 2;
+    ctx.arc(cx, cy, Math.max(1, radius), 0, Math.PI * 2);
+    if (fill) ctx.fill();
+    ctx.stroke();
+  } else if (shape === 'ellipse') {
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const rx = Math.max(1, Math.abs(x2 - x1) / 2);
+    const ry = Math.max(1, Math.abs(y2 - y1) / 2);
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     if (fill) ctx.fill();
     ctx.stroke();
   } else if (shape === 'triangle') {
@@ -514,14 +525,16 @@ export function drawShape(
 }
 
 export interface QuickShapeResult {
-  type: 'line' | 'circle' | 'ellipse' | 'rect' | 'triangle' | 'arc';
+  type: 'line' | 'circle' | 'ellipse' | 'rect' | 'square' | 'triangle' | 'arc';
   p1: { x: number; y: number };
   p2: { x: number; y: number };
+  center?: { x: number; y: number };
+  radius?: number;
   extraPoints?: { x: number; y: number }[];
 }
 
 /**
- * QuickShape detection algorithm: recognizes line, circle, ellipse, rect, triangle, arc
+ * Procreate QuickShape detection algorithm: recognizes line, true circle, ellipse, rectangle, square, triangle
  */
 export function detectQuickShape(points: Point[]): QuickShapeResult | null {
   if (points.length < 8) return null;
@@ -530,7 +543,7 @@ export function detectQuickShape(points: Point[]): QuickShapeResult | null {
   const end = points[points.length - 1];
   const startEndDist = Math.hypot(end.x - start.x, end.y - start.y);
 
-  // Compute total path length
+  // Compute total path length and bounds
   let totalLength = 0;
   let minX = points[0].x, maxX = points[0].x;
   let minY = points[0].y, maxY = points[0].y;
@@ -543,82 +556,157 @@ export function detectQuickShape(points: Point[]): QuickShapeResult | null {
     maxY = Math.max(maxY, points[i].y);
   }
 
-  // 1. Line detection: ratio of start-to-end distance to total stroke length is close to 1
-  if (totalLength > 30 && startEndDist / totalLength > 0.88) {
+  const bboxW = Math.max(1, maxX - minX);
+  const bboxH = Math.max(1, maxY - minY);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+
+  // 1. Line detection: ratio of start-to-end distance to total stroke length is high
+  if (totalLength > 20 && startEndDist / totalLength > 0.76) {
     return {
       type: 'line',
       p1: { x: start.x, y: start.y },
       p2: { x: end.x, y: end.y },
+      center: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
     };
   }
 
-  // 2. Arc detection: open stroke with curved trajectory
-  if (totalLength > 40 && startEndDist / totalLength > 0.55 && startEndDist / totalLength < 0.88) {
-    return {
-      type: 'arc',
-      p1: { x: start.x, y: start.y },
-      p2: { x: end.x, y: end.y },
-      extraPoints: [{ x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }],
-    };
-  }
+  // 2. Closed shape detection (start & end are reasonably close compared to perimeter/bbox)
+  const isClosed = startEndDist < Math.max(bboxW, bboxH) * 0.48 || startEndDist < 55;
 
-  // 3. Closed shape detection (start & end are close together)
-  const bboxW = maxX - minX;
-  const bboxH = maxY - minY;
-  const isClosed = startEndDist < Math.max(bboxW, bboxH) * 0.38;
+  if (isClosed && bboxW > 16 && bboxH > 16) {
+    const diag = Math.hypot(bboxW, bboxH);
+    const aspectRatio = Math.min(bboxW, bboxH) / Math.max(bboxW, bboxH);
 
-  if (isClosed && bboxW > 20 && bboxH > 20) {
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    const rx = bboxW / 2;
-    const ry = bboxH / 2;
-
-    let circleError = 0;
+    // Compute radial distances from centroid (cx, cy)
+    let sumR = 0;
+    let minR = Infinity;
+    let maxR = 0;
     for (let i = 0; i < points.length; i++) {
-      const normX = (points[i].x - cx) / Math.max(1, rx);
-      const normY = (points[i].y - cy) / Math.max(1, ry);
-      const distFrom1 = Math.abs(Math.hypot(normX, normY) - 1);
-      circleError += distFrom1;
+      const r = Math.hypot(points[i].x - cx, points[i].y - cy);
+      sumR += r;
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
     }
-    circleError /= points.length;
+    const avgR = sumR / points.length;
+    const radialRatio = maxR / Math.max(1, minR);
 
-    // Circle or Ellipse
-    if (circleError < 0.24) {
-      const aspectRatio = Math.min(bboxW, bboxH) / Math.max(bboxW, bboxH);
-      return {
-        type: aspectRatio > 0.82 ? 'circle' : 'ellipse',
-        p1: { x: minX, y: minY },
-        p2: { x: maxX, y: maxY },
-      };
-    }
-
-    // Triangle detection: check for 3 major directional turns
-    let directionChanges = 0;
-    for (let i = 2; i < points.length - 2; i += 2) {
-      const v1x = points[i].x - points[i - 2].x;
-      const v1y = points[i].y - points[i - 2].y;
-      const v2x = points[i + 2].x - points[i].x;
-      const v2y = points[i + 2].y - points[i].y;
-      const angle = Math.abs(Math.atan2(v2y, v2x) - Math.atan2(v1y, v1x));
-      if (angle > 0.8 && angle < 2.5) {
-        directionChanges++;
+    // Detect sharp corners along the stroke (turning angle > ~40° to 140°)
+    const step = Math.max(2, Math.floor(points.length / 16));
+    const sharpCorners: Point[] = [];
+    for (let i = step; i < points.length - step; i++) {
+      const pPrev = points[i - step];
+      const pCurr = points[i];
+      const pNext = points[i + step];
+      const v1x = pCurr.x - pPrev.x;
+      const v1y = pCurr.y - pPrev.y;
+      const v2x = pNext.x - pCurr.x;
+      const v2y = pNext.y - pCurr.y;
+      const l1 = Math.hypot(v1x, v1y);
+      const l2 = Math.hypot(v2x, v2y);
+      if (l1 < 2 || l2 < 2) continue;
+      const dot = (v1x * v2x + v1y * v2y) / (l1 * l2);
+      const clampedDot = Math.max(-1, Math.min(1, dot));
+      const turnAngle = Math.acos(clampedDot);
+      if (turnAngle >= 0.70) {
+        // Debounce corner cluster
+        const isDistant = sharpCorners.every((c) => Math.hypot(c.x - pCurr.x, c.y - pCurr.y) > step * 2.5);
+        if (isDistant) {
+          sharpCorners.push(pCurr);
+        }
       }
     }
 
-    if (directionChanges >= 2 && directionChanges <= 5) {
+    // Measure proximity of the stroke to the 4 corners of the bounding box
+    const bboxCorners = [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY },
+    ];
+    let cornersReachedCount = 0;
+    for (const bc of bboxCorners) {
+      let minDistToCorner = Infinity;
+      for (let i = 0; i < points.length; i++) {
+        const d = Math.hypot(points[i].x - bc.x, points[i].y - bc.y);
+        if (d < minDistToCorner) minDistToCorner = d;
+      }
+      if (minDistToCorner / diag < 0.12) {
+        cornersReachedCount++;
+      }
+    }
+
+    const hasFourCorners =
+      sharpCorners.length === 4 ||
+      cornersReachedCount >= 3 ||
+      (sharpCorners.length >= 3 && radialRatio > 1.28);
+
+    // 2.A Triangle: exactly 3 distinct corners and not a box
+    if (sharpCorners.length === 3 && cornersReachedCount < 3 && radialRatio > 1.35) {
       return {
         type: 'triangle',
         p1: { x: cx, y: minY },
         p2: { x: maxX, y: maxY },
+        center: { x: cx, y: cy },
         extraPoints: [{ x: minX, y: maxY }],
       };
     }
 
-    // Default to Rectangle
+    // 2.B Square / Rectangle: 4 corners or passes through bounding box corners with high radial variation
+    if (hasFourCorners) {
+      if (aspectRatio >= 0.76) {
+        // Perfect Square
+        const side = Math.max(bboxW, bboxH);
+        return {
+          type: 'square',
+          p1: { x: cx - side / 2, y: cy - side / 2 },
+          p2: { x: cx + side / 2, y: cy + side / 2 },
+          center: { x: cx, y: cy },
+          radius: side / 2,
+        };
+      } else {
+        // Rectangle
+        return {
+          type: 'rect',
+          p1: { x: minX, y: minY },
+          p2: { x: maxX, y: maxY },
+          center: { x: cx, y: cy },
+        };
+      }
+    }
+
+    // 2.C Circle vs Ellipse: Smooth curve with no sharp corners
+    if (aspectRatio >= 0.78 && radialRatio < 1.35) {
+      // True Circle
+      const r = avgR;
+      return {
+        type: 'circle',
+        p1: { x: cx - r, y: cy - r },
+        p2: { x: cx + r, y: cy + r },
+        center: { x: cx, y: cy },
+        radius: r,
+      };
+    } else {
+      // Ellipse
+      const rx = bboxW / 2;
+      const ry = bboxH / 2;
+      return {
+        type: 'ellipse',
+        p1: { x: minX, y: minY },
+        p2: { x: maxX, y: maxY },
+        center: { x: cx, y: cy },
+        radius: Math.max(rx, ry),
+      };
+    }
+  }
+
+  // If not closed, but long with relatively direct trajectory
+  if (totalLength > 30 && startEndDist / totalLength > 0.65) {
     return {
-      type: 'rect',
-      p1: { x: minX, y: minY },
-      p2: { x: maxX, y: maxY },
+      type: 'line',
+      p1: { x: start.x, y: start.y },
+      p2: { x: end.x, y: end.y },
+      center: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
     };
   }
 
